@@ -1,6 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/bash
-pkg install proot -y
-folder=debian-fs64
+folder=debian-fs
 if [ -d "$folder" ]; then
 	first=1
 	echo "skipping downloading"
@@ -16,10 +15,7 @@ if [ "$first" != 1 ];then
 			chmod 777 qemu-x86_64-static;
 			mv qemu-x86_64-static ~/../usr/bin ;;
 		arm)
-			archurl="amd64";
-			wget https://github.com/MasterTos/Termux-DebianX86_64/raw/master/arm/qemu-x86_64-static;
-			chmod 777 qemu-x86_64-static;
-			mv qemu-x86_64-static ~/../usr/bin/ ;;
+			archurl="armhf" ;;
 		amd64)
 			archurl="amd64" ;;
 		x86_64)
@@ -41,20 +37,27 @@ if [ "$first" != 1 ];then
 	cd "$cur"
 fi
 mkdir -p debian-binds
-bin=start-debian64.sh
+bin=start-debian.sh
 echo "writing launch script"
 cat > $bin <<- EOM
 #!/bin/bash
 cd \$(dirname \$0)
+pulseaudio --start
+## For rooted user: pulseaudio --start --system
 ## unset LD_PRELOAD in case termux-exec is installed
 unset LD_PRELOAD
 command="proot"
 command+=" --link2symlink"
 command+=" -0"
 command+=" -r $folder -q qemu-x86_64-static"
+if [ -n "\$(ls -A debian-binds)" ]; then
+    for f in debian-binds/* ;do
+      . \$f
+    done
+fi
 command+=" -b /dev"
 command+=" -b /proc"
-command+=" -b debian-fs64/root:/dev/shm"
+command+=" -b debian-fs/root:/dev/shm"
 ## uncomment the following line to have access to the home directory of termux
 #command+=" -b /data/data/com.termux/files/home:/root"
 ## uncomment the following line to mount /sdcard directly to / 
@@ -73,6 +76,23 @@ else
     \$command -c "\$com"
 fi
 EOM
+
+echo "Setting up pulseaudio so you can have music in distro."
+
+pkg install pulseaudio -y
+
+if grep -q "anonymous" ~/../usr/etc/pulse/default.pa;then
+    echo "module already present"
+else
+    echo "load-module module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1" >> ~/../usr/etc/pulse/default.pa
+fi
+
+echo "exit-idle-time = -1" >> ~/../usr/etc/pulse/daemon.conf
+echo "Modified pulseaudio timeout to infinite"
+echo "autospawn = no" >> ~/../usr/etc/pulse/client.conf
+echo "Disabled pulseaudio autospawn"
+echo "export PULSE_SERVER=127.0.0.1" >> debian-fs/etc/profile
+echo "Setting Pulseaudio server to 127.0.0.1"
 
 echo "fixing shebang of $bin"
 termux-fix-shebang $bin
